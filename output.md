@@ -1,27 +1,33 @@
-docker-compose 配置 DNS 主要是在 docker-compose.yml 文件中通过 dns 或 dns_search 参数来设置。具体用法如下：
+根据流程实例ID获取当前任务的候选组ID，可以通过查询 Flowable 的 ACT_RU_IDENTITYLINK 表，筛选出对应流程实例ID且类型为候选人的记录，并且候选组ID不为空。
 
-示例配置：
+SQL 查询示例（请将 '流程实例Id' 替换为实际的流程实例ID）：
 
-```yaml
-version: '3'
-services:
-  web:
-    image: nginx
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    dns_search:
-      - example.com
+```sql
+SELECT TASK_ID_, GROUP_ID_
+FROM ACT_RU_IDENTITYLINK
+WHERE PROC_INST_ID_ = '流程实例Id'
+  AND TYPE_ = 'candidate'
+  AND GROUP_ID_ IS NOT NULL;
 ```
 
-说明：
-- dns：指定容器使用的 DNS 服务器地址，可以是多个。
-- dns_search：指定 DNS 搜索域。
+这条语句会返回该流程实例下所有任务的候选组ID。如果你只想获取当前活动任务的候选组，可以先通过 ACT_RU_TASK 表获取当前活动任务，再结合上面的查询。
 
-默认情况下，Docker Compose 会使用宿主机的 DNS 配置。如果需要自定义 DNS 服务器，可以通过上述方式配置。
+例如，先查当前活动任务：
 
-参考链接：
-- [51CTO博客 docker-compose 设置dns](https://blog.51cto.com/u_16213400/7443051)
-- [云原生实践 Docker Compose 配置容器网络的DNS解析](https://www.oryoy.com/news/jie-mi-docker-compose-ru-he-qing-song-pei-zhi-rong-qi-wang-luo-de-dns-jie-xi.html)
+```sql
+SELECT ID_ AS TASK_ID
+FROM ACT_RU_TASK
+WHERE PROC_INST_ID_ = '流程实例Id';
+```
 
-如果需要更详细的配置示例或遇到具体问题，可以告诉我，我帮你进一步解答。
+然后用得到的 TASK_ID 去查询候选组：
+
+```sql
+SELECT GROUP_ID_
+FROM ACT_RU_IDENTITYLINK
+WHERE TASK_ID_ = '任务ID'
+  AND TYPE_ = 'candidate'
+  AND GROUP_ID_ IS NOT NULL;
+```
+
+如果你需要，我可以帮你写完整的查询语句。
