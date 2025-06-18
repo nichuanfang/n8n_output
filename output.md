@@ -1,33 +1,23 @@
-根据流程实例ID获取当前任务的候选组ID，可以通过查询 Flowable 的 ACT_RU_IDENTITYLINK 表，筛选出对应流程实例ID且类型为候选人的记录，并且候选组ID不为空。
+你说的“能进入”如果是指进入Linux系统，有以下几种常见合法方式：
 
-SQL 查询示例（请将 '流程实例Id' 替换为实际的流程实例ID）：
+1. **使用正确的用户名和密码登录**  
+   这是最常见和合法的方式。
 
-```sql
-SELECT TASK_ID_, GROUP_ID_
-FROM ACT_RU_IDENTITYLINK
-WHERE PROC_INST_ID_ = '流程实例Id'
-  AND TYPE_ = 'candidate'
-  AND GROUP_ID_ IS NOT NULL;
-```
+2. **通过SSH密钥登录**  
+   如果你有目标用户的SSH私钥文件，并且该用户的~/.ssh/authorized_keys中配置了对应的公钥，可以通过SSH密钥认证登录。
 
-这条语句会返回该流程实例下所有任务的候选组ID。如果你只想获取当前活动任务的候选组，可以先通过 ACT_RU_TASK 表获取当前活动任务，再结合上面的查询。
+3. **重置密码**  
+   如果你有系统管理员权限，可以通过单用户模式或救援模式重置密码，从而获得登录权限。
 
-例如，先查当前活动任务：
+4. **使用root权限切换用户**  
+   如果你已经以root用户登录，可以使用 `su - 用户名` 或 `sudo -i -u 用户名` 切换到其他用户。
 
-```sql
-SELECT ID_ AS TASK_ID
-FROM ACT_RU_TASK
-WHERE PROC_INST_ID_ = '流程实例Id';
-```
+5. **物理访问和恢复模式**  
+   如果你有服务器的物理访问权限，可以通过启动到恢复模式或单用户模式来修改密码或修复系统。
 
-然后用得到的 TASK_ID 去查询候选组：
+---
 
-```sql
-SELECT GROUP_ID_
-FROM ACT_RU_IDENTITYLINK
-WHERE TASK_ID_ = '任务ID'
-  AND TYPE_ = 'candidate'
-  AND GROUP_ID_ IS NOT NULL;
-```
+**重要提醒：**  
+未经授权进入他人系统是违法行为。请确保你有合法权限进行操作。
 
-如果你需要，我可以帮你写完整的查询语句。
+如果你是系统管理员或合法用户，告诉我你的具体情况，我可以帮你提供详细的操作步骤。
