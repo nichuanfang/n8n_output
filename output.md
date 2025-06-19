@@ -1,43 +1,95 @@
-群晖（Synology NAS）系统基于 Linux，但它的包管理和系统结构与常见的 Linux 发行版不同，通常不建议直接在群晖上从源码编译安装软件，因为可能会影响系统稳定性和升级。
+要在 Ubuntu 20 上静态编译支持 libfdk_aac 编解码器的 ffmpeg，可以按照以下步骤操作。静态编译可以将大部分依赖库打包进可执行文件，减少在目标系统（如群晖）上的依赖问题。
 
-如果你是在群晖上通过某些第三方途径（比如 Entware、Docker 或者手动编译）安装的 ffmpeg 和 libfdk_aac，卸载方法会有所不同：
+---
 
-1. 如果是通过 Entware 安装的：
+## 静态编译 ffmpeg 支持 libfdk_aac 的步骤
 
-Entware 是群晖常用的第三方包管理器，卸载命令类似于：
-
-```bash
-opkg remove ffmpeg
-opkg remove libfdk-aac
-```
-
-2. 如果是通过 Docker 运行的 ffmpeg：
-
-直接删除对应的 Docker 容器和镜像即可。
-
-3. 如果是你手动从源码编译安装的：
-
-请参考我之前给你的手动删除文件的方法，默认安装路径一般是 `/usr/local`，你可以用 SSH 登录群晖，执行：
+### 1. 安装必要的依赖
 
 ```bash
-sudo rm /usr/local/bin/ffmpeg
-sudo rm /usr/local/bin/ffprobe
-sudo rm /usr/local/bin/ffplay
-sudo rm -rf /usr/local/include/libav*
-sudo rm -rf /usr/local/lib/libav*
-sudo rm -rf /usr/local/share/ffmpeg
-sudo rm -rf /usr/local/lib/pkgconfig/libav*
-sudo rm -rf /usr/local/include/fdk-aac
-sudo rm -f /usr/local/lib/libfdk-aac.*
-sudo rm -f /usr/local/lib/pkgconfig/fdk-aac.pc
+sudo apt-get update
+sudo apt-get install -y autoconf automake build-essential cmake git libtool pkg-config nasm yasm libx264-dev libx265-dev libnuma-dev libfdk-aac-dev
 ```
 
-注意：群晖系统默认没有 sudo，可能需要切换到 root 用户或者使用 `sudo` 命令（如果已配置）。
+> 注意：如果系统没有 libfdk-aac-dev，可以从源码编译安装 libfdk-aac（见步骤2）。
 
-4. 如果你不确定安装方式，建议先确认：
+### 2. 编译并安装 libfdk-aac（如果没有）
 
-- 你是否用 Entware 安装过？
-- 是否用 Docker 运行过？
-- 是否手动编译安装过？
+```bash
+git clone https://github.com/mstorsjo/fdk-aac.git
+cd fdk-aac
+autoreconf -fiv
+./configure --prefix="$HOME/ffmpeg_build" --disable-shared
+make
+make install
+cd ..
+```
 
-你可以告诉我具体安装方式，我帮你确认卸载步骤。
+这里使用 `--disable-shared` 生成静态库，安装到 `$HOME/ffmpeg_build` 目录。
+
+### 3. 下载 ffmpeg 源码
+
+```bash
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+cd ffmpeg
+```
+
+### 4. 配置编译参数，启用静态编译和 libfdk_aac
+
+```bash
+PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" ./configure \
+  --prefix="$HOME/ffmpeg_build" \
+  --pkg-config-flags="--static" \
+  --extra-cflags="-I$HOME/ffmpeg_build/include" \
+  --extra-ldflags="-L$HOME/ffmpeg_build/lib" \
+  --extra-libs="-lpthread -lm" \
+  --ld="gcc" \
+  --enable-gpl \
+  --enable-nonfree \
+  --enable-libfdk_aac \
+  --enable-static \
+  --disable-shared \
+  --disable-debug \
+  --disable-doc \
+  --disable-ffplay
+```
+
+说明：
+- `--enable-static` 和 `--disable-shared` 让 ffmpeg 生成静态可执行文件。
+- `--enable-nonfree` 是因为 libfdk_aac 是非自由许可。
+- 关闭了 ffplay 和文档以简化编译。
+
+### 5. 编译并安装
+
+```bash
+make -j$(nproc)
+make install
+```
+
+### 6. 验证静态编译结果
+
+```bash
+ldd $HOME/ffmpeg_build/bin/ffmpeg
+```
+
+输出应显示 `not a dynamic executable`，表示是静态编译。
+
+同时检查编码器：
+
+```bash
+$HOME/ffmpeg_build/bin/ffmpeg -encoders | grep libfdk_aac
+```
+
+应显示 `libfdk_aac` 编码器。
+
+---
+
+## 编译完成后
+
+- 你可以将 `$HOME/ffmpeg_build/bin/ffmpeg` 上传到群晖使用。
+- 由于是静态编译，依赖较少，更容易在不同系统上运行。
+- 仍需确认群晖的 CPU 架构与编译架构一致。
+
+---
+
+如果需要，我可以帮你生成完整的脚本，或者指导交叉编译（如果群晖是 ARM 架构）。
