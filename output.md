@@ -1,15 +1,80 @@
-你这张截图展示了两条音频转换命令，分别是转换成 mp3 和 aac 格式，默认比特率都是 320 kbps，使用的是 ffmpeg 命令。
+在Ubuntu 20上编译支持libfdk_aac编码的FFmpeg，并将其挂载到Docker版本的Navidrome，步骤如下：
 
-如果你想要类似的格式和命令，这里给你补充几个常见音频格式的示例，格式、默认比特率和对应的 ffmpeg 命令：
+### 一、编译支持libfdk_aac的FFmpeg
 
-| 名称         | 目标格式 | 默认比特率 | 命令示例                                                                                  |
-|--------------|----------|------------|-------------------------------------------------------------------------------------------|
-| mp3 audio    | mp3      | 320        | ffmpeg -i %s -ss %t -map 0:a:0 -b:a 320k -y 0.mp3                                        |
-| aac audio    | aac      | 320        | ffmpeg -i %s -ss %t -map 0:a:0 -c:a aac -b:a 320k -vn -f adts 0.aac                       |
-| wav audio    | wav      | 无损       | ffmpeg -i %s -ss %t -map 0:a:0 -c:a pcm_s16le -vn 0.wav                                  |
-| ogg audio    | ogg      | 192        | ffmpeg -i %s -ss %t -map 0:a:0 -c:a libvorbis -b:a 192k -vn 0.ogg                         |
-| flac audio   | flac     | 无损       | ffmpeg -i %s -ss %t -map 0:a:0 -c:a flac -vn 0.flac                                     |
+1. 安装依赖
+```bash
+sudo apt update
+sudo apt install -y autoconf automake build-essential cmake git libass-dev libfreetype6-dev \
+libgnutls28-dev libmp3lame-dev libnuma-dev libopus-dev libtheora-dev libtool libvorbis-dev \
+libvpx-dev pkg-config texinfo wget yasm zlib1g-dev nasm libx264-dev libx265-dev libfdk-aac-dev
+```
 
-其中 `%s` 是输入文件，`%t` 是开始时间，`-map 0:a:0` 表示选择第一个音频流。
+2. 下载FFmpeg源码
+```bash
+cd ~
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+cd ffmpeg
+```
 
-如果你需要我帮你生成某个具体格式的命令，或者想要添加到你的列表里，可以告诉我。
+3. 配置编译选项，启用libfdk_aac和非自由组件
+```bash
+./configure --prefix=/usr/local/ffmpeg --enable-gpl --enable-nonfree --enable-libfdk_aac --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libvpx
+```
+
+4. 编译并安装
+```bash
+make -j$(nproc)
+sudo make install
+```
+
+5. 验证FFmpeg是否支持libfdk_aac
+```bash
+/usr/local/ffmpeg/bin/ffmpeg -encoders | grep libfdk_aac
+```
+如果看到`libfdk_aac`编码器，说明编译成功。
+
+---
+
+### 二、将自编译FFmpeg挂载到Docker版Navidrome
+
+假设你已经有运行中的Navidrome Docker容器。
+
+1. 创建一个目录用于挂载FFmpeg
+```bash
+mkdir -p ~/custom_ffmpeg/bin
+cp /usr/local/ffmpeg/bin/ffmpeg ~/custom_ffmpeg/bin/
+```
+
+2. 停止Navidrome容器（假设容器名为navidrome）
+```bash
+docker stop navidrome
+```
+
+3. 重新启动Navidrome容器，挂载自定义FFmpeg路径，并设置环境变量`FFMPEG_PATH`指向挂载的ffmpeg
+```bash
+docker run -d \
+  --name navidrome \
+  -p 4533:4533 \
+  -v /path/to/music:/music \
+  -v /path/to/data:/data \
+  -v ~/custom_ffmpeg/bin/ffmpeg:/usr/bin/ffmpeg:ro \
+  -e FFMPEG_PATH=/usr/bin/ffmpeg \
+  deluan/navidrome
+```
+
+注意：
+- `/path/to/music`和`/path/to/data`替换为你的音乐和数据目录。
+- 挂载的ffmpeg路径`/usr/bin/ffmpeg`是容器内ffmpeg的路径，确保Navidrome调用的是这个路径。
+
+4. 进入Navidrome Web界面，确认转码功能正常，且使用的是libfdk_aac编码器。
+
+---
+
+### 总结
+
+- 在Ubuntu 20上编译FFmpeg时启用`--enable-libfdk_aac`和`--enable-nonfree`。
+- 将编译好的ffmpeg复制到宿主机目录，挂载到Docker容器内。
+- 通过环境变量`FFMPEG_PATH`让Navidrome使用自定义FFmpeg。
+
+如果需要，我可以帮你写完整的脚本或Docker Compose配置。
