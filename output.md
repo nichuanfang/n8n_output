@@ -1,23 +1,60 @@
-对应的AAC编解码器名称如下：
+要让你的 Linux 服务器上的 ffmpeg 支持 libfdk_aac 编码器，通常需要重新编译 ffmpeg，并在编译时启用 libfdk_aac 支持。因为大多数 Linux 发行版自带的 ffmpeg 版本默认不包含 libfdk_aac 支持，主要是因为许可问题。
 
-1. **Fraunhofer FDK AAC**  
-   - 名称：FDK AAC Codec  
-   - 项目地址（开源）：https://github.com/mstorsjo/fdk-aac
+以下是一个通用的步骤指南，帮助你从源码编译支持 libfdk_aac 的 ffmpeg：
 
-2. **Apple AAC Codec**  
-   - 名称：Apple AAC Encoder  
-   - 集成于iTunes、iOS/macOS系统中，未单独公开提供。
+1. 安装依赖
+确保你安装了编译 ffmpeg 所需的依赖，包括编译工具和库：
 
-3. **Nero AAC Codec**  
-   - 名称：Nero AAC Codec  
-   - 官网下载：https://www.nero.com/eng/downloads/nero-aac-codec.php
+```bash
+sudo apt-get update
+sudo apt-get install -y autoconf automake build-essential cmake git libass-dev libfreetype6-dev libgnutls28-dev libmp3lame-dev libnuma-dev libopus-dev libtool libvorbis-dev libvpx-dev pkg-config texinfo wget yasm zlib1g-dev nasm libfdk-aac-dev
+```
 
-4. **FAAC**  
-   - 名称：FAAC (Freeware Advanced Audio Coder)  
-   - 项目地址（开源）：https://sourceforge.net/projects/faac/
+注意：`libfdk-aac-dev` 是 libfdk_aac 的开发库，如果你的系统仓库没有，可以从源码安装。
 
-5. **libavcodec AAC**  
-   - 名称：libfdk_aac（FFmpeg中的FDK AAC），或FFmpeg自带AAC编码器（aac）  
-   - FFmpeg官网：https://ffmpeg.org/
+2. 下载并编译 libfdk_aac（如果系统没有）
 
-这些名称和项目可以帮助你找到对应的编解码器实现。需要注意的是，FDK AAC和FAAC是独立库，FFmpeg集成了多种AAC编码器供选择。
+```bash
+git clone https://github.com/mstorsjo/fdk-aac.git
+cd fdk-aac
+autoreconf -fiv
+./configure --prefix=/usr/local
+make
+sudo make install
+cd ..
+```
+
+3. 下载 ffmpeg 源码
+
+```bash
+git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
+cd ffmpeg
+```
+
+4. 配置编译选项，启用 libfdk_aac
+
+```bash
+./configure --prefix=/usr/local --enable-gpl --enable-nonfree --enable-libfdk_aac
+```
+
+5. 编译并安装
+
+```bash
+make -j$(nproc)
+sudo make install
+```
+
+6. 验证
+
+```bash
+ffmpeg -encoders | grep libfdk_aac
+```
+
+如果看到 `libfdk_aac` 编码器，说明支持成功。
+
+总结：
+- 你需要先安装 libfdk_aac 库。
+- 重新编译 ffmpeg，配置时加上 `--enable-libfdk_aac --enable-nonfree`。
+- 编译完成后安装使用。
+
+如果你需要，我可以帮你生成更详细的脚本或步骤。你也可以告诉我你使用的 Linux 发行版，我帮你定制安装步骤。
