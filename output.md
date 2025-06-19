@@ -1,60 +1,43 @@
-要让你的 Linux 服务器上的 ffmpeg 支持 libfdk_aac 编码器，通常需要重新编译 ffmpeg，并在编译时启用 libfdk_aac 支持。因为大多数 Linux 发行版自带的 ffmpeg 版本默认不包含 libfdk_aac 支持，主要是因为许可问题。
+群晖（Synology NAS）系统基于 Linux，但它的包管理和系统结构与常见的 Linux 发行版不同，通常不建议直接在群晖上从源码编译安装软件，因为可能会影响系统稳定性和升级。
 
-以下是一个通用的步骤指南，帮助你从源码编译支持 libfdk_aac 的 ffmpeg：
+如果你是在群晖上通过某些第三方途径（比如 Entware、Docker 或者手动编译）安装的 ffmpeg 和 libfdk_aac，卸载方法会有所不同：
 
-1. 安装依赖
-确保你安装了编译 ffmpeg 所需的依赖，包括编译工具和库：
+1. 如果是通过 Entware 安装的：
 
-```bash
-sudo apt-get update
-sudo apt-get install -y autoconf automake build-essential cmake git libass-dev libfreetype6-dev libgnutls28-dev libmp3lame-dev libnuma-dev libopus-dev libtool libvorbis-dev libvpx-dev pkg-config texinfo wget yasm zlib1g-dev nasm libfdk-aac-dev
-```
-
-注意：`libfdk-aac-dev` 是 libfdk_aac 的开发库，如果你的系统仓库没有，可以从源码安装。
-
-2. 下载并编译 libfdk_aac（如果系统没有）
+Entware 是群晖常用的第三方包管理器，卸载命令类似于：
 
 ```bash
-git clone https://github.com/mstorsjo/fdk-aac.git
-cd fdk-aac
-autoreconf -fiv
-./configure --prefix=/usr/local
-make
-sudo make install
-cd ..
+opkg remove ffmpeg
+opkg remove libfdk-aac
 ```
 
-3. 下载 ffmpeg 源码
+2. 如果是通过 Docker 运行的 ffmpeg：
+
+直接删除对应的 Docker 容器和镜像即可。
+
+3. 如果是你手动从源码编译安装的：
+
+请参考我之前给你的手动删除文件的方法，默认安装路径一般是 `/usr/local`，你可以用 SSH 登录群晖，执行：
 
 ```bash
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-cd ffmpeg
+sudo rm /usr/local/bin/ffmpeg
+sudo rm /usr/local/bin/ffprobe
+sudo rm /usr/local/bin/ffplay
+sudo rm -rf /usr/local/include/libav*
+sudo rm -rf /usr/local/lib/libav*
+sudo rm -rf /usr/local/share/ffmpeg
+sudo rm -rf /usr/local/lib/pkgconfig/libav*
+sudo rm -rf /usr/local/include/fdk-aac
+sudo rm -f /usr/local/lib/libfdk-aac.*
+sudo rm -f /usr/local/lib/pkgconfig/fdk-aac.pc
 ```
 
-4. 配置编译选项，启用 libfdk_aac
+注意：群晖系统默认没有 sudo，可能需要切换到 root 用户或者使用 `sudo` 命令（如果已配置）。
 
-```bash
-./configure --prefix=/usr/local --enable-gpl --enable-nonfree --enable-libfdk_aac
-```
+4. 如果你不确定安装方式，建议先确认：
 
-5. 编译并安装
+- 你是否用 Entware 安装过？
+- 是否用 Docker 运行过？
+- 是否手动编译安装过？
 
-```bash
-make -j$(nproc)
-sudo make install
-```
-
-6. 验证
-
-```bash
-ffmpeg -encoders | grep libfdk_aac
-```
-
-如果看到 `libfdk_aac` 编码器，说明支持成功。
-
-总结：
-- 你需要先安装 libfdk_aac 库。
-- 重新编译 ffmpeg，配置时加上 `--enable-libfdk_aac --enable-nonfree`。
-- 编译完成后安装使用。
-
-如果你需要，我可以帮你生成更详细的脚本或步骤。你也可以告诉我你使用的 Linux 发行版，我帮你定制安装步骤。
+你可以告诉我具体安装方式，我帮你确认卸载步骤。
