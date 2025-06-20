@@ -1,95 +1,40 @@
-要在 Ubuntu 20 上静态编译支持 libfdk_aac 编解码器的 ffmpeg，可以按照以下步骤操作。静态编译可以将大部分依赖库打包进可执行文件，减少在目标系统（如群晖）上的依赖问题。
+使用Mockito的@Mock、@InjectMocks、@RunWith(PowerMockRunner.class)注解以及Mockito类写单元测试时，提高方法覆盖率和行覆盖率的技巧总结如下：
 
----
+1. 合理使用@Mock和@InjectMocks
+- @Mock用于创建依赖对象的模拟实例，避免真实依赖带来的复杂性和副作用。
+- @InjectMocks用于将@Mock创建的模拟对象注入到被测试类中，保证测试环境的隔离。
+- 通过模拟依赖，可以专注测试目标方法的逻辑，覆盖更多代码路径。
 
-## 静态编译 ffmpeg 支持 libfdk_aac 的步骤
+2. 使用@RunWith(PowerMockRunner.class)
+- PowerMockRunner支持对静态方法、final类、私有方法等难以mock的代码进行mock。
+- 结合PowerMockito可以mock静态方法、构造函数等，覆盖更多代码分支。
 
-### 1. 安装必要的依赖
+3. 编写全面的测试用例
+- 针对不同输入、边界条件、异常情况编写测试用例，覆盖所有代码路径。
+- 使用Mockito的when...thenReturn模拟不同返回值，测试各种逻辑分支。
 
-```bash
-sudo apt-get update
-sudo apt-get install -y autoconf automake build-essential cmake git libtool pkg-config nasm yasm libx264-dev libx265-dev libnuma-dev libfdk-aac-dev
-```
+4. 使用Mockito的verify验证交互
+- 验证mock对象的方法调用次数和参数，确保代码逻辑正确执行。
+- 通过验证交互覆盖代码中的条件判断和分支。
 
-> 注意：如果系统没有 libfdk-aac-dev，可以从源码编译安装 libfdk-aac（见步骤2）。
+5. 结合代码覆盖率工具
+- 使用JaCoCo等覆盖率工具检测测试覆盖率，找出未覆盖代码。
+- 针对未覆盖代码补充测试用例，提升覆盖率。
 
-### 2. 编译并安装 libfdk-aac（如果没有）
+6. 避免过度mock
+- 只mock必要的依赖，保持测试的真实性和有效性。
+- 过度mock可能导致测试失去意义，反而降低代码质量。
 
-```bash
-git clone https://github.com/mstorsjo/fdk-aac.git
-cd fdk-aac
-autoreconf -fiv
-./configure --prefix="$HOME/ffmpeg_build" --disable-shared
-make
-make install
-cd ..
-```
+7. 关注异常和边界测试
+- 模拟异常抛出，测试异常处理逻辑。
+- 测试边界条件，确保代码健壮。
 
-这里使用 `--disable-shared` 生成静态库，安装到 `$HOME/ffmpeg_build` 目录。
+8. 使用参数化测试
+- 通过JUnit参数化测试，批量测试多种输入，提高覆盖率。
 
-### 3. 下载 ffmpeg 源码
+参考资料：
+- CSDN博客《JAVA实战：如何让单元测试覆盖率达到80%甚至以上以及碰到的坑》https://blog.csdn.net/zth_killer/article/details/129693691
+- 博客园《使用PowerMockRunner和Mockito编写单元测试用例详解》https://www.cnblogs.com/charlypage/p/14672637.html
+- Stack Overflow关于@RunWith(PowerMockRunner.class)的讨论 https://stackoverflow.com/questions/38268929/runwithpowermockrunner-class-vs-runwithmockitojunitrunner-class
 
-```bash
-git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg
-cd ffmpeg
-```
-
-### 4. 配置编译参数，启用静态编译和 libfdk_aac
-
-```bash
-PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" ./configure \
-  --prefix="$HOME/ffmpeg_build" \
-  --pkg-config-flags="--static" \
-  --extra-cflags="-I$HOME/ffmpeg_build/include" \
-  --extra-ldflags="-L$HOME/ffmpeg_build/lib" \
-  --extra-libs="-lpthread -lm" \
-  --ld="gcc" \
-  --enable-gpl \
-  --enable-nonfree \
-  --enable-libfdk_aac \
-  --enable-static \
-  --disable-shared \
-  --disable-debug \
-  --disable-doc \
-  --disable-ffplay
-```
-
-说明：
-- `--enable-static` 和 `--disable-shared` 让 ffmpeg 生成静态可执行文件。
-- `--enable-nonfree` 是因为 libfdk_aac 是非自由许可。
-- 关闭了 ffplay 和文档以简化编译。
-
-### 5. 编译并安装
-
-```bash
-make -j$(nproc)
-make install
-```
-
-### 6. 验证静态编译结果
-
-```bash
-ldd $HOME/ffmpeg_build/bin/ffmpeg
-```
-
-输出应显示 `not a dynamic executable`，表示是静态编译。
-
-同时检查编码器：
-
-```bash
-$HOME/ffmpeg_build/bin/ffmpeg -encoders | grep libfdk_aac
-```
-
-应显示 `libfdk_aac` 编码器。
-
----
-
-## 编译完成后
-
-- 你可以将 `$HOME/ffmpeg_build/bin/ffmpeg` 上传到群晖使用。
-- 由于是静态编译，依赖较少，更容易在不同系统上运行。
-- 仍需确认群晖的 CPU 架构与编译架构一致。
-
----
-
-如果需要，我可以帮你生成完整的脚本，或者指导交叉编译（如果群晖是 ARM 架构）。
+总结：合理利用Mockito和PowerMock的注解与API，结合全面的测试用例设计和覆盖率工具，重点测试异常和边界情况，可以有效提升方法覆盖率和行覆盖率。
