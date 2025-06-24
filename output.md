@@ -1,28 +1,42 @@
-在 PostgreSQL 中，联合索引（多列索引）是作为一个整体创建的，不能直接修改索引来删除其中的某一个字段。如果你想要“删除”联合索引中的某个字段，实际上需要做的是：
+下面是一个示例 GitHub Actions Workflow 脚本，演示如何自动删除最近一次提交（即重置到上一个提交）并强制推送到远程仓库。你可以根据需求修改重写历史的命令。
 
-1. 删除原有的联合索引。
-2. 重新创建一个不包含该字段的新联合索引。
+```yaml
+name: Auto Delete Last Commit
 
-具体步骤如下：
+on:
+  workflow_dispatch:  # 手动触发，也可以改为 schedule 定时触发
+  # schedule:
+  #   - cron: '0 0 * * *'  # 每天午夜执行
 
-假设你有一个联合索引名为 idx_example，索引字段是 (column1, column2, column3)，你想删除其中的 column2。
+jobs:
+  delete-last-commit:
+    runs-on: ubuntu-latest
 
-1. 删除原有索引：
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取完整历史，方便重写
 
-```sql
-DROP INDEX idx_example;
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Delete last commit and force push
+        run: |
+          git reset --hard HEAD~1
+          git push origin HEAD --force
+        env:
+          # 需要设置有推送权限的令牌，默认 GITHUB_TOKEN 有权限
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-2. 创建新的联合索引，不包含 column2：
+说明：
+- 该工作流默认手动触发（workflow_dispatch），你也可以取消注释 schedule 部分实现定时触发。
+- 使用 `git reset --hard HEAD~1` 删除最近一次提交，你可以改成其他 git 命令实现更复杂的历史重写。
+- `actions/checkout@v3` 的 `fetch-depth: 0` 确保拉取完整历史。
+- 使用默认的 `${{ secrets.GITHUB_TOKEN }}` 进行身份验证，确保该令牌有推送权限。
+- 强制推送会覆盖远程历史，慎用！
 
-```sql
-CREATE INDEX idx_example_new ON your_table (column1, column3);
-```
-
-注意事项：
-
-- 删除索引会影响数据库查询性能，建议在业务低峰期操作。
-- 创建新索引时，可以根据需要选择合适的索引类型（默认是 B-tree）。
-- 如果索引名被其他对象引用，删除时需要谨慎。
-
-总结：PostgreSQL 不支持直接修改索引字段，必须删除旧索引并重新创建新索引。
+如果你需要删除特定提交或批量清理历史，可以告诉我，我帮你写更复杂的脚本。
