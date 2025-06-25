@@ -1,24 +1,34 @@
-从你提供的Nacos配置截图看，配置格式是YAML，内容包含了nacos的服务发现配置和数据源配置。要支持配置动态刷新，通常需要注意以下几点：
+在 PostgreSQL 中，提取字符串中的某个数据可以使用多种函数，具体取决于你想提取的内容和格式。常用的方法有：
 
-1. 配置格式和内容是否正确：
-   - 你的YAML格式看起来是正确的，缩进和层级关系合理。
-   - nacos.discovery部分配置了server-addr、namespace、group等，符合Nacos客户端配置规范。
-   - 其他配置如datasource也符合常见格式。
+1. 使用 substring 函数：
+```sql
+-- 提取字符串中符合正则表达式的部分
+SELECT substring(your_column FROM '正则表达式') FROM your_table;
+```
+例如，提取字符串中第一个数字：
+```sql
+SELECT substring('abc123def' FROM '\d+') AS extracted_number;
+-- 结果: 123
+```
 
-2. 支持动态刷新：
-   - 仅配置Nacos客户端是不够的，还需要在Spring Boot项目中引入相关依赖，比如`spring-cloud-starter-alibaba-nacos-config`。
-   - 需要在Spring Boot启动类或者配置类上添加`@RefreshScope`注解，标注需要动态刷新的Bean。
-   - 需要在配置文件中开启配置自动刷新功能，比如`spring.cloud.nacos.config.refresh-enabled=true`。
-   - 确保使用了Spring Cloud Alibaba版本支持动态刷新。
+2. 使用 split_part 函数：
+```sql
+-- 按分隔符拆分字符串，提取指定部分
+SELECT split_part(your_column, '分隔符', 部分编号) FROM your_table;
+```
+例如，提取以逗号分隔的第二部分：
+```sql
+SELECT split_part('apple,banana,cherry', ',', 2) AS second_part;
+-- 结果: banana
+```
 
-3. 其他建议：
-   - 你的namespace配置是一个UUID格式，确认是否正确对应Nacos控制台中的命名空间ID。
-   - group配置为DEFAULT_GROUP，确认是否和Nacos控制台配置一致。
-   - server-addr配置了多个地址，格式正确。
+3. 使用正则表达式函数 regexp_matches 或 regexp_replace：
+```sql
+-- 返回所有匹配的子串（数组）
+SELECT regexp_matches(your_column, '正则表达式') FROM your_table;
 
-总结：
-- 配置本身看起来没明显错误。
-- 需要确认项目中引入了Nacos配置相关依赖，并且开启了动态刷新相关配置。
-- 需要在需要刷新的Bean上添加`@RefreshScope`注解。
+-- 替换字符串中匹配的部分
+SELECT regexp_replace(your_column, '正则表达式', '替换内容') FROM your_table;
+```
 
-如果你需要，我可以帮你给出一个支持Nacos配置动态刷新的Spring Boot示例配置。你需要吗？
+如果你能提供具体的字符串样例和想提取的数据格式，我可以帮你写更精准的 SQL 语句。
