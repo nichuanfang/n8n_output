@@ -1,36 +1,51 @@
-如果只需要查询字符串类型的变量值，Flowable中字符串类型的变量一般存储在字段 `text_` 中（而非 `long_` 或 `double_` 等字段）。
+你当前的SQL是针对单个流程实例ID和变量名查询变量值的。现在需求是根据多个流程实例ID列表，批量获取每个流程实例对应的变量值。
 
-基于此，针对你要根据流程实例ID（execution_id_）和变量名称（name_）查询字符串类型变量值的需求，推荐的高性能SQL示例如下：
+思路是将单个流程实例ID的查询改写为针对多个流程实例ID的查询，返回每个流程实例ID对应的变量值。需要注意：
+
+- 变量名仍然是单个变量名，还是多个变量名？假设变量名是单个变量名。
+- 对每个流程实例ID，优先返回运行时变量，否则返回历史变量。
+- 返回结果中包含流程实例ID和对应的变量值。
+
+下面是基于你原SQL的改写示例，假设传入的流程实例ID列表是 :processInstanceIds（数组或逗号分隔字符串），变量名是 :variableName：
 
 ```sql
-SELECT text_ AS variable_value
-FROM act_ru_variable
-WHERE execution_id_ = :executionId
-  AND name_ = :variableName
-  AND text_ IS NOT NULL
-UNION ALL
-SELECT text_ AS variable_value
-FROM act_hi_varinst
-WHERE execution_id_ = :executionId
-  AND name_ = :variableName
-  AND text_ IS NOT NULL
-ORDER BY CASE WHEN variable_value IS NOT NULL THEN 0 ELSE 1 END
-LIMIT 1;
+WITH run_var AS (
+    SELECT proc_inst_id_, text_ AS variable_value,
+           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY NULL) AS rn
+    FROM act_ru_variable
+    WHERE proc_inst_id_ = ANY(:processInstanceIds)
+      AND name_ = :variableName
+      AND text_ IS NOT NULL
+),
+hist_var AS (
+    SELECT proc_inst_id_, text_ AS variable_value,
+           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY time_ DESC) AS rn
+    FROM act_hi_varinst
+    WHERE proc_inst_id_ = ANY(:processInstanceIds)
+      AND name_ = :variableName
+      AND text_ IS NOT NULL
+)
+SELECT proc_inst_id_, variable_value
+FROM (
+    SELECT proc_inst_id_, variable_value, rn, 1 AS priority FROM run_var WHERE rn = 1
+    UNION ALL
+    SELECT proc_inst_id_, variable_value, rn, 2 AS priority FROM hist_var WHERE rn = 1
+) t
+WHERE NOT EXISTS (
+    SELECT 1 FROM run_var r WHERE r.proc_inst_id_ = t.proc_inst_id_
+)
+OR priority = 1
+ORDER BY proc_inst_id_, priority
+;
 ```
 
 说明：
-- 只查询 `text_` 字段不为空的记录，确保是字符串类型变量。
-- 先查运行时变量表 `act_ru_variable`，查不到再查历史变量表 `act_hi_varinst`。
-- 使用 `(execution_id_, name_)` 组合索引，确保查询效率。
-- `LIMIT 1` 保证只返回一个结果。
 
-索引建议：
+- run_var和hist_var分别查询运行时和历史变量，使用ROW_NUMBER()按流程实例分组排序，取每个流程实例的第一条变量值。
+- 最终结果中，优先返回运行时变量（priority=1），如果运行时变量不存在，则返回历史变量（priority=2）。
+- 通过WHERE NOT EXISTS保证只有当运行时变量不存在时才返回历史变量。
+- 返回字段包含proc_inst_id_和对应的variable_value。
 
-```sql
-CREATE INDEX idx_ru_variable_execution_name_text ON act_ru_variable (execution_id_, name_) WHERE text_ IS NOT NULL;
-CREATE INDEX idx_hi_varinst_execution_name_text ON act_hi_varinst (execution_id_, name_) WHERE text_ IS NOT NULL;
-```
+如果你的数据库或驱动不支持数组参数，可以将 :processInstanceIds 替换成临时表或用IN列表。
 
-这样索引只覆盖字符串类型变量，进一步提升查询性能。
-
-如果你需要，我可以帮你写具体的参数绑定示例或Java代码调用示例。
+如果你需要支持多个变量名，逻辑会更复杂，可以告诉我，我帮你调整。
