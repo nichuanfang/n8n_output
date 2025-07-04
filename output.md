@@ -1,47 +1,42 @@
-你的SQL逻辑整体上是合理的，目标是先从运行时表（act_ru_variable）中查找变量值，如果找不到再从历史表（act_hi_varinst）中查找。查询结构和思路也符合需求。
+了解了，act_ru_variable表没有time_列，导致你原先用ROW_NUMBER()时ORDER BY NULL在PostgreSQL不支持。
 
-不过，有几点细节可以优化或确认：
+这里有几种处理方案：
 
-1. ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY NULL)  
-   - PostgreSQL中ORDER BY NULL是不被支持的，应该改成ORDER BY某个确定的列，或者如果不关心顺序，可以用ORDER BY proc_inst_id_，但这样每个分组内的行号可能没有意义。  
-   - 你这里的目的是取每个proc_inst_id_的第一条记录，建议明确指定排序列，比如运行时表中可以用某个时间戳列（如果有）或者主键列。
+1. 如果你只想取每个proc_inst_id_对应的任意一条记录（不关心具体哪条），可以用ORDER BY proc_inst_id_或者ORDER BY (SELECT NULL)的变通写法，但后者PostgreSQL不支持。
 
-2. WHERE NOT EXISTS 子句的逻辑  
-   - 你用来排除已经在运行时表中存在的proc_inst_id_，这部分逻辑是对的。
+2. 你可以用ORDER BY proc_inst_id_或者ORDER BY (SELECT 1)，但这其实没什么排序意义，只是为了让ROW_NUMBER()能用。
 
-3. 参数绑定  
-   - :processInstanceIds 和 :variableName 是参数占位符，确保调用时传入正确格式的数组和字符串。
+3. 另一种思路是用DISTINCT ON，这在PostgreSQL中可以方便地取每组第一条记录，且不需要ROW_NUMBER()。
 
-4. 性能建议  
-   - 如果processInstanceIds数量很大，ANY(:processInstanceIds)可能性能不佳，可以考虑临时表或JOIN。
+基于第3点，我帮你改写成用DISTINCT ON的写法，逻辑是：
 
-5. 语法检查  
-   - 你可以尝试执行SQL，确认是否有语法错误。
+- 先从运行时表取每个proc_inst_id_的第一条（任意一条）变量值
+- 再从历史表取每个proc_inst_id_的第一条变量值
+- 最终合并，优先返回运行时表的结果，没有再返回历史表的
 
-基于以上，我帮你调整了ORDER BY部分，假设运行时表和历史表都有时间列time_，用它排序：
+改写SQL如下：
 
 ```sql
 WITH run_var AS (
-    SELECT proc_inst_id_, text_ AS variable_value,
-           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY time_ DESC) AS rn
+    SELECT DISTINCT ON (proc_inst_id_) proc_inst_id_, text_ AS variable_value
     FROM act_ru_variable
     WHERE proc_inst_id_ = ANY(:processInstanceIds)
       AND name_ = :variableName
       AND text_ IS NOT NULL
 ),
 hist_var AS (
-    SELECT proc_inst_id_, text_ AS variable_value,
-           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY time_ DESC) AS rn
+    SELECT DISTINCT ON (proc_inst_id_) proc_inst_id_, text_ AS variable_value
     FROM act_hi_varinst
     WHERE proc_inst_id_ = ANY(:processInstanceIds)
       AND name_ = :variableName
       AND text_ IS NOT NULL
+    ORDER BY proc_inst_id_, time_ DESC
 )
 SELECT proc_inst_id_, variable_value
 FROM (
-    SELECT proc_inst_id_, variable_value, rn, 1 AS priority FROM run_var WHERE rn = 1
+    SELECT proc_inst_id_, variable_value, 1 AS priority FROM run_var
     UNION ALL
-    SELECT proc_inst_id_, variable_value, rn, 2 AS priority FROM hist_var WHERE rn = 1
+    SELECT proc_inst_id_, variable_value, 2 AS priority FROM hist_var
 ) t
 WHERE NOT EXISTS (
     SELECT 1 FROM run_var r WHERE r.proc_inst_id_ = t.proc_inst_id_
@@ -51,6 +46,12 @@ ORDER BY proc_inst_id_, priority
 ;
 ```
 
-如果运行时表没有time_列，可以用其他合适列替代ORDER BY。
+说明：
 
-总结：你的SQL思路没问题，主要是ORDER BY NULL在PostgreSQL不支持，建议改成明确的排序列。其他逻辑看起来正确。你可以根据实际表结构调整排序列。需要我帮你根据表结构进一步优化吗？
+- run_var用DISTINCT ON (proc_inst_id_)取每个流程实例的第一条变量值，顺序无所谓，所以没有ORDER BY。
+- hist_var用DISTINCT ON (proc_inst_id_)并ORDER BY proc_inst_id_, time_ DESC，取时间最新的历史变量值。
+- 最后合并结果，优先返回运行时表的变量值。
+
+这样写更简洁且符合PostgreSQL语法。
+
+你可以试试这个版本，看是否满足需求。需要我帮你进一步调整吗？
