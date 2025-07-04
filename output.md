@@ -1,57 +1,24 @@
-了解了，act_ru_variable表没有time_列，导致你原先用ROW_NUMBER()时ORDER BY NULL在PostgreSQL不支持。
+从逻辑和语法角度看，你提供的SQL整体是合理的，能实现“先从运行时表取变量值，若无则从历史表取变量值”的需求。特别是用DISTINCT ON和WHERE NOT EXISTS结合，符合PostgreSQL的用法。
 
-这里有几种处理方案：
+不过，以下几点建议你确认和注意：
 
-1. 如果你只想取每个proc_inst_id_对应的任意一条记录（不关心具体哪条），可以用ORDER BY proc_inst_id_或者ORDER BY (SELECT NULL)的变通写法，但后者PostgreSQL不支持。
+1. **参数传入**  
+   - `:processInstanceIds` 应该是数组类型，确保调用时传入格式正确。  
+   - `:variableName` 是字符串。
 
-2. 你可以用ORDER BY proc_inst_id_或者ORDER BY (SELECT 1)，但这其实没什么排序意义，只是为了让ROW_NUMBER()能用。
+2. **运行时表无排序列**  
+   - 运行时表用DISTINCT ON但无ORDER BY，PostgreSQL会随机取每组第一条，是否满足业务需求？如果需要特定规则，可能需要加排序列。
 
-3. 另一种思路是用DISTINCT ON，这在PostgreSQL中可以方便地取每组第一条记录，且不需要ROW_NUMBER()。
+3. **性能**  
+   - 如果`processInstanceIds`很多，ANY操作可能影响性能，考虑索引或临时表。
 
-基于第3点，我帮你改写成用DISTINCT ON的写法，逻辑是：
+4. **字段类型和NULL**  
+   - 你过滤了`text_ IS NOT NULL`，确保业务上变量值确实存储在text_字段。
 
-- 先从运行时表取每个proc_inst_id_的第一条（任意一条）变量值
-- 再从历史表取每个proc_inst_id_的第一条变量值
-- 最终合并，优先返回运行时表的结果，没有再返回历史表的
+5. **测试验证**  
+   - 建议在测试环境执行，确认结果符合预期。
 
-改写SQL如下：
+总结：  
+你的SQL写法在PostgreSQL中是正确的，逻辑清晰，符合需求。只要参数传递正确，表结构字段符合预期，应该没问题。
 
-```sql
-WITH run_var AS (
-    SELECT DISTINCT ON (proc_inst_id_) proc_inst_id_, text_ AS variable_value
-    FROM act_ru_variable
-    WHERE proc_inst_id_ = ANY(:processInstanceIds)
-      AND name_ = :variableName
-      AND text_ IS NOT NULL
-),
-hist_var AS (
-    SELECT DISTINCT ON (proc_inst_id_) proc_inst_id_, text_ AS variable_value
-    FROM act_hi_varinst
-    WHERE proc_inst_id_ = ANY(:processInstanceIds)
-      AND name_ = :variableName
-      AND text_ IS NOT NULL
-    ORDER BY proc_inst_id_, time_ DESC
-)
-SELECT proc_inst_id_, variable_value
-FROM (
-    SELECT proc_inst_id_, variable_value, 1 AS priority FROM run_var
-    UNION ALL
-    SELECT proc_inst_id_, variable_value, 2 AS priority FROM hist_var
-) t
-WHERE NOT EXISTS (
-    SELECT 1 FROM run_var r WHERE r.proc_inst_id_ = t.proc_inst_id_
-)
-OR priority = 1
-ORDER BY proc_inst_id_, priority
-;
-```
-
-说明：
-
-- run_var用DISTINCT ON (proc_inst_id_)取每个流程实例的第一条变量值，顺序无所谓，所以没有ORDER BY。
-- hist_var用DISTINCT ON (proc_inst_id_)并ORDER BY proc_inst_id_, time_ DESC，取时间最新的历史变量值。
-- 最后合并结果，优先返回运行时表的变量值。
-
-这样写更简洁且符合PostgreSQL语法。
-
-你可以试试这个版本，看是否满足需求。需要我帮你进一步调整吗？
+如果你需要，我可以帮你写一个测试样例或者帮你做进一步优化。需要吗？
