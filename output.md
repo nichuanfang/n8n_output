@@ -1,17 +1,29 @@
-你当前的SQL是针对单个流程实例ID和变量名查询变量值的。现在需求是根据多个流程实例ID列表，批量获取每个流程实例对应的变量值。
+你的SQL逻辑整体上是合理的，目标是先从运行时表（act_ru_variable）中查找变量值，如果找不到再从历史表（act_hi_varinst）中查找。查询结构和思路也符合需求。
 
-思路是将单个流程实例ID的查询改写为针对多个流程实例ID的查询，返回每个流程实例ID对应的变量值。需要注意：
+不过，有几点细节可以优化或确认：
 
-- 变量名仍然是单个变量名，还是多个变量名？假设变量名是单个变量名。
-- 对每个流程实例ID，优先返回运行时变量，否则返回历史变量。
-- 返回结果中包含流程实例ID和对应的变量值。
+1. ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY NULL)  
+   - PostgreSQL中ORDER BY NULL是不被支持的，应该改成ORDER BY某个确定的列，或者如果不关心顺序，可以用ORDER BY proc_inst_id_，但这样每个分组内的行号可能没有意义。  
+   - 你这里的目的是取每个proc_inst_id_的第一条记录，建议明确指定排序列，比如运行时表中可以用某个时间戳列（如果有）或者主键列。
 
-下面是基于你原SQL的改写示例，假设传入的流程实例ID列表是 :processInstanceIds（数组或逗号分隔字符串），变量名是 :variableName：
+2. WHERE NOT EXISTS 子句的逻辑  
+   - 你用来排除已经在运行时表中存在的proc_inst_id_，这部分逻辑是对的。
+
+3. 参数绑定  
+   - :processInstanceIds 和 :variableName 是参数占位符，确保调用时传入正确格式的数组和字符串。
+
+4. 性能建议  
+   - 如果processInstanceIds数量很大，ANY(:processInstanceIds)可能性能不佳，可以考虑临时表或JOIN。
+
+5. 语法检查  
+   - 你可以尝试执行SQL，确认是否有语法错误。
+
+基于以上，我帮你调整了ORDER BY部分，假设运行时表和历史表都有时间列time_，用它排序：
 
 ```sql
 WITH run_var AS (
     SELECT proc_inst_id_, text_ AS variable_value,
-           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY NULL) AS rn
+           ROW_NUMBER() OVER (PARTITION BY proc_inst_id_ ORDER BY time_ DESC) AS rn
     FROM act_ru_variable
     WHERE proc_inst_id_ = ANY(:processInstanceIds)
       AND name_ = :variableName
@@ -39,13 +51,6 @@ ORDER BY proc_inst_id_, priority
 ;
 ```
 
-说明：
+如果运行时表没有time_列，可以用其他合适列替代ORDER BY。
 
-- run_var和hist_var分别查询运行时和历史变量，使用ROW_NUMBER()按流程实例分组排序，取每个流程实例的第一条变量值。
-- 最终结果中，优先返回运行时变量（priority=1），如果运行时变量不存在，则返回历史变量（priority=2）。
-- 通过WHERE NOT EXISTS保证只有当运行时变量不存在时才返回历史变量。
-- 返回字段包含proc_inst_id_和对应的variable_value。
-
-如果你的数据库或驱动不支持数组参数，可以将 :processInstanceIds 替换成临时表或用IN列表。
-
-如果你需要支持多个变量名，逻辑会更复杂，可以告诉我，我帮你调整。
+总结：你的SQL思路没问题，主要是ORDER BY NULL在PostgreSQL不支持，建议改成明确的排序列。其他逻辑看起来正确。你可以根据实际表结构调整排序列。需要我帮你根据表结构进一步优化吗？
