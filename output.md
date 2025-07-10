@@ -1,13 +1,25 @@
-像《盗梦空间》这样的电影，其意义可以从多个角度来看：
+在PostgreSQL中，可以通过查询系统视图pg_locks和pg_stat_activity来查看当前被锁定的SQL语句和锁信息。以下是一个常用的查询示例，用于查看哪些SQL语句持有锁或正在等待锁：
 
-1. **探索意识与潜意识**：电影通过梦境的设定，探讨了人类意识、潜意识以及记忆的复杂关系，激发观众对自我认知和心理层面的思考。
+```sql
+SELECT
+    pg_stat_activity.pid,
+    pg_stat_activity.query,
+    pg_locks.locktype,
+    pg_locks.mode,
+    pg_locks.granted,
+    pg_stat_activity.state,
+    pg_stat_activity.query_start
+FROM
+    pg_stat_activity
+JOIN
+    pg_locks ON pg_stat_activity.pid = pg_locks.pid
+WHERE
+    pg_stat_activity.pid <> pg_backend_pid()  -- 排除当前会话
+    AND pg_stat_activity.query <> '<IDLE>'
+ORDER BY
+    pg_stat_activity.query_start;
+```
 
-2. **叙事创新**：它采用多层梦境叠加的叙事结构，挑战传统线性叙事方式，推动电影艺术在叙事上的创新和突破。
+这个查询会显示持有锁或等待锁的进程ID（pid）、对应的SQL语句、锁类型、锁模式、是否已授予锁、会话状态以及查询开始时间。
 
-3. **视觉与技术表现**：电影在视觉效果和特效制作上有很高的水准，展示了现代电影技术的进步和应用。
-
-4. **引发讨论与解读**：电影结尾的开放式设计让观众产生各种解读和讨论，增强了观影的互动性和深度。
-
-5. **娱乐与思考结合**：不仅提供了紧张刺激的剧情体验，也带来了哲学和心理学层面的思考，满足不同层次的观众需求。
-
-当然，电影的意义和价值因人而异，有些观众可能更看重故事的直白和情感共鸣，而对复杂结构不感兴趣，这也完全正常。您觉得电影应该更注重哪方面的意义呢？
+如果您需要进一步帮助，或者想要查询特定表的锁信息，也可以告诉我。
