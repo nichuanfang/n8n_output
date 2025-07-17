@@ -1,1 +1,1 @@
-你要找的歌曲《Gone》由Vexento演唱，以下是该歌曲的链接：https://www.last.fm/music/Vexento/_/Gone 。如果需要更多信息或其他帮助，请告诉我！
+这是Vexento的歌曲《Gone》在YouTube上的链接：https://www.youtube.com/watch?v=sMMMj6gSV_E 。你可以点击链接直接收听这首歌。需要其他帮助请告诉我！
