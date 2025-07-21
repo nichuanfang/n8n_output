@@ -1,18 +1,42 @@
-我拥有多种工具，可以帮助你获取信息、查询数据、浏览网页等。以下是我主要的工具介绍：
+明白了，你的需求是：
 
-1. **联网查询工具 SearXNG**  
-   - 用于搜索实时信息、最新新闻、具体数据或专业术语。  
-   - 可以帮助你获取最新的网络内容和动态。
+- 在PostgreSQL中建表，用来存储某个域名的cookie JSON文本。
+- 表中的主键（key）需要通过 uuid + key + url 组合生成，保证唯一性。
+- 存储内容是某个域名对应的完整cookie JSON文本。
 
-2. **functions 命名空间下的工具**  
-   - **ai_prompting_guide**：提供AI提示工程相关的指南和知识。  
-   - **personal_knowledge_base**：访问个人基础资料库，回答相关问题。  
-   - **select_music_record**：查询音乐播放记录数据库，获取歌曲、艺术家、专辑等信息。  
-   - **web_browse**：读取指定网页内容，帮助提取网页上的信息。  
-   - **wikipedia-api**：通过维基百科API查询百科知识。  
-   - **searxng-search**：使用元搜索引擎进行多源搜索，获取综合信息。
+基于此，我给你设计一个表结构示例：
 
-3. **multi_tool_use.parallel**  
-   - 支持同时调用多个工具并行处理，提高效率。
+```sql
+CREATE TABLE domain_cookies (
+    id UUID NOT NULL,               -- uuid部分
+    key TEXT NOT NULL,              -- key部分
+    url TEXT NOT NULL,              -- url部分
+    domain VARCHAR(255) NOT NULL,   -- 域名
+    cookie_json JSONB NOT NULL,     -- 存储cookie的完整JSON文本
+    PRIMARY KEY (id, key, url)      -- 组合主键
+);
+```
 
-如果你有具体需求，比如查找某个问题的最新信息、查询音乐记录、获取百科知识等，都可以告诉我，我会帮你选择合适的工具来完成。你有什么想了解或需要帮助的吗？
+说明：
+- id字段用UUID类型，存储uuid。
+- key和url是文本类型。
+- domain单独存储方便查询。
+- cookie_json用jsonb类型存储cookie的完整JSON文本。
+- 主键是三字段组合，确保唯一。
+
+如果你需要生成uuid，可以在插入时用PostgreSQL的uuid_generate_v4()函数（需要安装uuid-ossp扩展）或者由应用程序生成。
+
+示例插入语句：
+
+```sql
+INSERT INTO domain_cookies (id, key, url, domain, cookie_json)
+VALUES (
+    uuid_generate_v4(),
+    'your_key_value',
+    'https://example.com',
+    'example.com',
+    '{"cookie1": "value1", "cookie2": "value2"}'::jsonb
+);
+```
+
+如果你需要，我可以帮你写完整的建表和插入示例。需要吗？
