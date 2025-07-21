@@ -1,47 +1,102 @@
-针对你这个查询需求，性能优化可以从以下几个方面考虑：
+你的需求是：  
+给定一个域名参数（如 `foo.a.com`），需要在 domain_cookies 表中查找所有“适用”的 cookie。  
+- 如果 domain 字段为 `a.com`，只匹配 `a.com` 本身。  
+- 如果 domain 字段为 `.a.com`，则匹配 `a.com` 及其所有子域（如 `b.a.com`, `foo.a.com` 等）。
 
-1. **索引设计**  
-   - 对 `domain` 字段建立普通的B树索引，可以加速 `domain = 'sub.example.com'` 的精确匹配。  
-   - 但是 `domain LIKE '.%'` 和 `'sub.example.com' LIKE '%' || domain` 这种后缀匹配，普通索引无法加速。
+## 查询思路
 
-2. **利用反向索引（pg_trgm扩展）**  
-   - PostgreSQL 的 pg_trgm 扩展支持对 LIKE '%xxx' 这种模糊匹配建立索引。  
-   - 你可以对 `domain` 字段创建一个 `gin` 或 `gist` 类型的 trigram 索引，提升后缀匹配的性能。
+假设你的输入参数为 `{{ $json.domain }}`，比如 `foo.a.com`。
 
-3. **拆分查询逻辑**  
-   - 先用索引快速定位全域名匹配的行。  
-   - 再用 trigram 索引加速泛域名的后缀匹配。
+你需要查找：
+1. domain = `foo.a.com`（全域名精确匹配）
+2. domain = `.a.com`，且 `foo.a.com` 以 `a.com` 结尾（泛域名匹配）
 
-4. **示例索引和查询**：
-
-```sql
--- 开启pg_trgm扩展（如果还没启用）
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- 建立普通索引，加速精确匹配
-CREATE INDEX idx_domain_exact ON domain_cookies(domain);
-
--- 建立trigram索引，加速LIKE匹配
-CREATE INDEX idx_domain_trgm ON domain_cookies USING gin (domain gin_trgm_ops);
-```
-
-查询语句保持不变：
+### SQL 查询
 
 ```sql
-SELECT domain, cookies
+SELECT *
 FROM domain_cookies
-WHERE domain = 'sub.example.com'
-   OR (domain LIKE '.%' AND 'sub.example.com' LIKE '%' || domain);
+WHERE
+    -- 精确匹配
+    domain = '{{ $json.domain }}'
+    -- 泛域名匹配
+    OR (
+        domain LIKE '.%' -- 以点开头的泛域名
+        AND (
+            -- 去掉 domain 字段的开头的点
+            right('{{ $json.domain }}', length(domain) - 1) = right(domain, length(domain) - 1)
+            OR
+            '{{ $json.domain }}' LIKE '%' || right(domain, length(domain) - 1)
+        )
+        AND (
+            -- 只匹配以 domain 去掉点后的结尾
+            '{{ $json.domain }}' ~ ('(^|\\.)' || right(domain, length(domain) - 1) || '$')
+        )
+    )
+;
 ```
 
-5. **注意事项**  
-- pg_trgm 索引对 LIKE '%xxx' 有效，但对 LIKE 'xxx%' 更有效率。这里是后缀匹配，pg_trgm 仍然适用。  
-- 如果数据量非常大，且查询频繁，考虑把泛域名拆成单独字段或设计更适合的结构。  
-- 也可以考虑把 domain 字段反转存储，方便用前缀匹配代替后缀匹配。
+### 更简洁实用的写法
 
-总结：  
-- 建立普通索引加速精确匹配。  
-- 建立 pg_trgm 索引加速后缀模糊匹配。  
-- 保持查询逻辑不变。  
+通常只需要两种情况：
 
-需要我帮你写具体的索引创建和测试脚本吗？
+```sql
+SELECT *
+FROM domain_cookies
+WHERE
+    domain = '{{ $json.domain }}'
+    OR (
+        domain LIKE '.%' -- 泛域名
+        AND (
+            '{{ $json.domain }}' = right(domain, length(domain) - 1)
+            OR
+            '{{ $json.domain }}' LIKE '%.' || right(domain, length(domain) - 1)
+        )
+    )
+;
+```
+
+#### 说明
+- `right(domain, length(domain) - 1)` 取得去掉开头点的域名部分。
+- `LIKE '%.' || ...` 保证只有以 `.` 分隔的子域才会匹配。
+- 这样 `foo.a.com` 会匹配 `.a.com`，`a.com` 也会匹配 `.a.com`。
+
+---
+
+## 示例
+
+假设表中有如下数据：
+
+| id | domain   | ... |
+|----|----------|-----|
+| 1  | a.com    | ... |
+| 2  | .a.com   | ... |
+| 3  | b.com    | ... |
+| 4  | .b.com   | ... |
+
+输入 `foo.a.com`，会匹配 id=2（.a.com）；  
+输入 `a.com`，会匹配 id=1（a.com）和 id=2（.a.com）。
+
+---
+
+## 总结
+
+你可以直接用如下 SQL：
+
+```sql
+SELECT *
+FROM domain_cookies
+WHERE
+    domain = '{{ $json.domain }}'
+    OR (
+        domain LIKE '.%'
+        AND (
+            '{{ $json.domain }}' = right(domain, length(domain) - 1)
+            OR
+            '{{ $json.domain }}' LIKE '%.' || right(domain, length(domain) - 1)
+        )
+    )
+;
+```
+
+如需进一步优化或有特殊边界情况，欢迎补充说明！
