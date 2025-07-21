@@ -1,30 +1,31 @@
-你说的表结构是 domain_cookies(domain, cookies)，其中 domain 字段存储的是域名信息，可能是泛域名（以点开头，如 `.example.com`）或者是全域名（如 `example.com`）。
+针对你这个查询需求，性能优化可以从以下几个方面考虑：
 
-你想根据某一个具体域名（比如 `sub.example.com`）获取所有匹配的 cookies，匹配规则是：
+1. **索引设计**  
+   - 对 `domain` 字段建立普通的B树索引，可以加速 `domain = 'sub.example.com'` 的精确匹配。  
+   - 但是 `domain LIKE '.%'` 和 `'sub.example.com' LIKE '%' || domain` 这种后缀匹配，普通索引无法加速。
 
-- 如果表中 domain 是全域名，且等于该域名，则匹配。
-- 如果表中 domain 是泛域名（以点开头），且该域名是泛域名的子域名，则匹配。
+2. **利用反向索引（pg_trgm扩展）**  
+   - PostgreSQL 的 pg_trgm 扩展支持对 LIKE '%xxx' 这种模糊匹配建立索引。  
+   - 你可以对 `domain` 字段创建一个 `gin` 或 `gist` 类型的 trigram 索引，提升后缀匹配的性能。
 
-举例：查询 `sub.example.com`，要匹配 `sub.example.com` 和 `.example.com`。
+3. **拆分查询逻辑**  
+   - 先用索引快速定位全域名匹配的行。  
+   - 再用 trigram 索引加速泛域名的后缀匹配。
 
-对应的 SQL 可以写成：
+4. **示例索引和查询**：
 
 ```sql
-SELECT cookies
-FROM domain_cookies
-WHERE domain = 'sub.example.com'
-   OR (domain LIKE '.%' AND 'sub.example.com' LIKE '%' || domain);
+-- 开启pg_trgm扩展（如果还没启用）
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- 建立普通索引，加速精确匹配
+CREATE INDEX idx_domain_exact ON domain_cookies(domain);
+
+-- 建立trigram索引，加速LIKE匹配
+CREATE INDEX idx_domain_trgm ON domain_cookies USING gin (domain gin_trgm_ops);
 ```
 
-解释：
-
-- `domain = 'sub.example.com'`：匹配全域名完全相等的情况。
-- `domain LIKE '.%'`：筛选出泛域名（以点开头）。
-- `'sub.example.com' LIKE '%' || domain`：判断传入的域名是否以泛域名结尾，比如 `sub.example.com` LIKE `%.example.com`。
-
-如果你想查询其他域名，只需要替换 `'sub.example.com'` 即可。
-
-如果你需要返回所有匹配的 cookies，可以用上面的查询。如果需要返回 domain 和 cookies，可以改成：
+查询语句保持不变：
 
 ```sql
 SELECT domain, cookies
@@ -33,4 +34,14 @@ WHERE domain = 'sub.example.com'
    OR (domain LIKE '.%' AND 'sub.example.com' LIKE '%' || domain);
 ```
 
-这样就能获取该域名对应的所有 cookies 了。需要我帮你写成函数或者更复杂的查询吗？
+5. **注意事项**  
+- pg_trgm 索引对 LIKE '%xxx' 有效，但对 LIKE 'xxx%' 更有效率。这里是后缀匹配，pg_trgm 仍然适用。  
+- 如果数据量非常大，且查询频繁，考虑把泛域名拆成单独字段或设计更适合的结构。  
+- 也可以考虑把 domain 字段反转存储，方便用前缀匹配代替后缀匹配。
+
+总结：  
+- 建立普通索引加速精确匹配。  
+- 建立 pg_trgm 索引加速后缀模糊匹配。  
+- 保持查询逻辑不变。  
+
+需要我帮你写具体的索引创建和测试脚本吗？
